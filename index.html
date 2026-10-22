@@ -75,7 +75,8 @@
     </style>
 </head>
 <body class="min-h-screen flex flex-col bg-bgDark text-slate-100">
-    <div id="root" class="flex-grow flex flex-col w-full h-[100dvh] relative overflow-hidden"></div>
+    <!-- 100dvh вирішує проблему з адресним рядком браузера на мобільних -->
+    <div id="root" class="w-full h-[100dvh] relative overflow-hidden flex flex-col bg-bgDark"></div>
 
     <script type="text/babel">
         const { useState, useEffect } = React;
@@ -304,10 +305,9 @@
                     const j = Math.floor(Math.random() * (i + 1));
                     [indices[i], indices[j]] = [indices[j], indices[i]];
                 }
-                return { ...q, options: indices.map(i => q.options[i]), correctIndex: indices.indexOf(q.correctIndex) };
+                return { ...q, options: indices.map(i => q.options[i] || '---'), correctIndex: indices.indexOf(q.correctIndex) };
             });
         }
 
         // --- МАГАЗИН ТА ЮЗЕР ---
-        const STORE_FRAMES = [
-            { id: 'f0', name: 'Стандартна', price: 0, style: 'b
+        
