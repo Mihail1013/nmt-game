@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NMT Arena - Premium</title>
+    
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='112' fill='%23050810'/><path d='M256 80 L416 144 L416 288 C416 400 256 480 256 480 C256 480 96 400 96 288 L96 144 Z' fill='none' stroke='%233b82f6' stroke-width='24'/><path d='M150 150 L362 362 M362 150 L150 362' stroke='%238b5cf6' stroke-width='24' stroke-linecap='round'/></svg>">
+
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        bgDark: '#050810',
+                        cardDark: '#111827',
+                        accentBlue: '#3b82f6',
+                        accentPurple: '#8b5cf6',
+                    },
+                    animation: {
+                        'slide-up': 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'fade-in': 'fadeIn 0.3s ease-out forwards',
+                        'pulse-glow': 'pulseGlow 2s infinite',
+                        'scale-in': 'scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                    },
+                    keyframes: {
+                        slideUp: { '0%': { opacity: '0', transform: 'translateY(20px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+                        fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+                        scaleIn: { '0%': { opacity: '0', transform: 'scale(0.95)' }, '100%': { opacity: '1', transform: 'scale(1)' } },
+                        pulseGlow: { '0%, 100%': { boxShadow: '0 0 15px rgba(59, 130, 246, 0.3)' }, '50%': { boxShadow: '0 0 30px rgba(59, 130, 246, 0.8)' } }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #050810;
+            color: #f8fafc;
+            overflow: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+        }
+        .glass-nav {
+            background: rgba(5, 8, 16, 0.85);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 999px; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        
+        .stagger-item { opacity: 0; animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; will-change: transform, opacity; }
+        .loading-bg { background: radial-gradient(circle at 50% 50%, #111827 0%, #050810 100%); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-bgDark text-slate-100">
+    <div id="root" class="flex-grow flex flex-col max-w-2xl mx-auto w-full h-screen relative overflow-hidden"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- ЗВУКИ ---
+        class AudioFX {
+            constructor() { this.ctx = null; }
+            init() { if (!this.ctx) try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} }
+            suspend() { if (this.ctx && this.ctx.state === 'running') this.ctx.suspend(); }
+            resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
+            playCorrect() {
+                this.init(); if(!this.ctx) return;
+                const now = this.ctx.currentTime;
+                [523.25, 659.25, 783.99].forEach((f, i) => {
+                    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+                    o.type='sine'; o.frequency.value=f;
+                    g.gain.setValueAtTime(0.1, now+i*0.08);
+                    g.gain.exponentialRampToValueAtTime(0.01, now+i*0.08+0.2);
+                    o.connect(g); g.connect(this.ctx.destination);
+                    o.start(now+i*0.08); o.stop(now+i*0.08+0.2);
+                });
+            }
+            playWrong() {
+                this.init(); if(!this.ctx) return;
+                const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+                o.type='sawtooth'; o.frequency.setValueAtTime(150, this.ctx.currentTime);
+                o.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime+0.2);
+                g.gain.setValueAtTime(0.15, this.ctx.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime+0.2);
+                o.connect(g); g.connect(this.ctx.destination);
+                o.start(); o.stop(this.ctx.currentTime+0.2);
+            }
+            playClick() {
+                this.init(); if(!this.ctx) return;
+                const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+                o.type='sine'; o.frequency.value=600;
+                g.gain.setValueAtTime(0.05, this.ctx.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime+0.05);
+                o.connect(g); g.connect(this.ctx.destination);
+                o.start(); o.stop(this.ctx.currentTime+0.05);
+            }
+            playWin() {
+                this.init(); if(!this.ctx) return;
+                [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => {
+                    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+                    o.type='triangle'; o.frequency.value=f;
+                    g.gain.setValueAtTime(0.15, this.ctx.currentTime+i*0.1);
+                    g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime+i*0.1+0.3);
+                    o.connect(g); g.connect(this.ctx.destination);
+                    o.start(this.ctx.currentTime+i*0.1); o.stop(this.ctx.currentTime+i*0.1+0.3);
+                });
+            }
+        }
+        const sfx = new AudioFX();
+
+        // --- СПИСОК ЗАКЛАДІВ ---
+        const SCHOOLS_LIST = [
+            "Київський національний університет ім. Тараса Шевченка",
+            "НТУУ 'КПІ ім. Ігоря Сікорського'",
+            "Національний університет 'Києво-Могилянська академія'",
+            "Львівський національний університет імені Івана Франка",
+            "Національний університет 'Львівська політехніка'",
+            "Харківський національний університет імені В. Н. Каразіна",
+            "Київський ліцей 'Наукова зміна'",
+            "Український фізико-математичний ліцей КНУ",
+            "Львівський фізико-математичний ліцей",
+            "Інший заклад"
+        ];
+
+        // --- ТЕМИ ---
+        const SUBJECTS_TOPICS = {
+            math: [
+                'Дійсні числа', 'Відношення та пропорції', 'Відсотки', 'Степені та корені', 
+                'Раціональні вирази', 'Ірраціональні вирази', 'Тригонометричні вирази', 
+                'Логарифмічні вирази', 'Лінійні рівняння', 'Квадратні рівняння', 
+                'Раціональні рівняння', 'Ірраціональні рівняння', 'Показникові рівняння', 
+                'Логарифмічні рівняння', 'Тригонометричні рівняння', 'Нерівності', 
+                'Текстові задачі', 'Функції та графіки', 'Похідна', 'Первісна та інтеграл',
+                'Комбінаторика', 'Ймовірність', 'Статистика', 'Планіметрія (трикутники)',
+                'Планіметрія (чотирикутники)', 'Коло і круг', 'Координати та вектори',
+                'Стереометрія (призма, піраміда)', 'Тіла обертання'
+            ],
+            ukr: ['Орфоепія (Наголос)', 'Орфографія (Апостроф)', 'Лексикологія', 'Фразеологія', 'Синтаксис'],
+            history: ['Київська Русь', 'Козацька доба', 'XX Століття', 'Сучасна історія'],
+            geo: ['Фізична географія', 'Економічна географія', 'Карпати', 'Річки'],
+            eng: ['Present Perfect', 'Conditionals', 'Passive Voice', 'Idioms'],
+            phy: ['Кінематика', 'Динаміка', 'Електрика', 'Оптика'],
+            chem: ['Періодичний закон', 'Хімічний зв\'язок', 'Розчини'],
+            bio: ['Клітина', 'Генетика', 'Еволюція', 'Анатомія']
+        };
+
+        // --- РЕАЛЬНА БАЗА ПИТАНЬ ---
+        const REAL_QUESTIONS = {
+            ukr: [
+                { topic: 'Орфоепія (Наголос)', text: 'Наголос падає на ДРУГИЙ склад у слові:', options: ['загадка', 'випадок', 'одиннадцять', 'дочка'], correctIndex: 0, explanation: 'Правильно: зАгадка. ВИпадок, одинАдцять, дочкА.' },
+                { topic: 'Орфоепія (Наголос)', text: 'Наголос падає на перший склад у слові:', options: ['книжки', 'новий', 'фахівець', 'предмет'], correctIndex: 0, explanation: 'Правильно: кнИжки. НовИй, фахівЕць, предмЕт.' },
+                { topic: 'Орфографія (Апостроф)', text: 'Апостроф ПИШЕТЬСЯ в усіх словах рядка:', options: ['солов..їний, торф..яний', 'б..юджет, п..юре', 'хом..як, розв..язати', 'моркв..яний, свято'], correctIndex: 2, explanation: 'Хом’як, розв’язати пишуться з апострофом.' },
+                { topic: 'Синтаксис', text: 'Укажіть речення з відокремленим означенням:', options: ['Осяяне сонцем, море грало хвилями.', 'Сонце заходило, і вечір наступав.', 'Він біг швидко, розмахуючи руками.', 'Настане літо, й зацвітуть сади.'], correctIndex: 0, explanation: "'Осяяне сонцем' — це відокремлене означення." },
+                { topic: 'Фразеологія', text: 'Фразеологізм "бити байдики" означає:', options: ['працювати', 'відпочивати (ледарювати)', 'сваритися', 'хворіти'], correctIndex: 1, explanation: 'Бити байдики — нічого не робити.' }
+            ],
+            history: [
+                { topic: 'Київська Русь', text: 'Яка подія відбулася у 988 році?', options: ['Хрещення Русі', 'Любецький з\'їзд', 'Битва на Калці', 'Руська Правда'], correctIndex: 0, explanation: 'У 988 році Володимир Великий охрестив Русь.' },
+                { topic: 'Козацька доба', text: 'Хто очолив Національно-визвольну війну 1648 р.?', options: ['Богдан Хмельницький', 'Петро Сагайдачний', 'Іван Мазепа', 'Пилип Орлик'], correctIndex: 0, explanation: 'Війну 1648–1657 рр. очолив Богдан Хмельницький.' },
+                { topic: 'XX Століття', text: 'Коли проголошено Акт злуки УНР та ЗУНР?', options: ['22 січня 1919 р.', '24 серпня 1991 р.', '1905 р.', '14 жовтня 1942 р.'], correctIndex: 0, explanation: 'Акт Злуки — 22 січня 1919 року.' }
+            ],
+            geo: [
+                { topic: 'Карпати', text: 'Найвища точка ВСІХ Карпат:', options: ['Герлаховський штит', 'Говерла', 'Піп Іван', 'Петрос'], correctIndex: 0, explanation: 'Герлаховський штит (2655 м, Словаччина).' },
+                { topic: 'Фізична географія', text: 'Найвища гора України:', options: ['Говерла', 'Герлаховський штит', 'Близниця', 'Ребра'], correctIndex: 0, explanation: 'Говерла має висоту 2061 м.' }
+            ],
+            eng: [
+                { topic: 'Present Perfect', text: 'Choose the correct form: "By the time we arrived, the movie _____."', options: ['had already started', 'has already started', 'already started', 'starts'], correctIndex: 0, explanation: 'Past Perfect for an action before another past action.' },
+                { topic: 'Conditionals', text: 'If I _____ more time, I would learn another language.', options: ['had', 'have', 'will have', 'would have'], correctIndex: 0, explanation: 'Second Conditional: If + Past Simple, would + Infinitive.' }
+            ],
+            phy: [
+                { topic: 'Кінематика', text: 'Формула швидкості при рівномірному русі:', options: ['v = s : t', 'v = a • t', 's = v • t', 'F = m • a'], correctIndex: 0, explanation: 'Швидкість = шлях : час.' }
+            ],
+            chem: [
+                { topic: 'Періодичний закон', text: 'Хто відкрив періодичний закон?', options: ['Д. Менделєєв', 'М. Ломоносов', 'А. Лавуазьє', 'Д. Дальтон'], correctIndex: 0, explanation: 'Менделєєв у 1869 році.' }
+            ],
+            bio: [
+                { topic: 'Клітина', text: 'Яка органела відповідає за синтез білка?', options: ['Рибосома', 'Мітохондрія', 'Ядро', 'Лізосома'], correctIndex: 0, explanation: 'Рибосоми — місце синтезу білка.' }
+            ]
+        };
+
+        // --- АЛГОРИТМІЧНИЙ ГЕНЕРАТОР МАТЕМАТИКИ ---
+        function generateMathQuestions(topicFilter = null, count = 10) {
+            const pool = [];
+            const topics = topicFilter ? [topicFilter] : SUBJECTS_TOPICS.math;
+            
+            for (let i = 0; i < count; i++) {
+                const topic = topics[Math.floor(Math.random() * topics.length)];
+                let text = '', opts = [], correct = 0, expl = '';
+
+                if (topic.includes('Лінійні')) {
+                    const x = Math.floor(Math.random() * 10) + 1;
+                    const a = Math.floor(Math.random() * 5) + 2;
+                    const b = Math.floor(Math.random() * 20) - 10;
+                    const c = a * x + b;
+                    text = `Розв'яжіть рівняння: ${a}x ${b >= 0 ? '+ '+b : '- '+Math.abs(b)} = ${c}`;
+                    correct = x;
+                    opts = [x, x+1, x-1, x+2].sort(() => Math.random() - 0.5);
+                    expl = `Переносимо число: ${a}x = ${c} - (${b}) => ${a}x = ${c-b}. Тоді x = ${c-b} : ${a} = ${x}.`;
+                } else if (topic.includes('Квадратні')) {
+                    const root1 = Math.floor(Math.random() * 5) + 1;
+                    const root2 = Math.floor(Math.random() * 5) + 1;
+                    text = `Знайдіть суму коренів рівняння: x² - ${root1 + root2}x + ${root1 * root2} = 0`;
+                    correct = root1 + root2;
+                    opts = [correct, root1 * root2, -correct, root1 - root2].sort(() => Math.random() - 0.5);
+                    expl = `За теоремою Вієта сума коренів x₁ + x₂ = -b. Тут b = -${root1 + root2}, тому сума = ${correct}.`;
+                } else if (topic.includes('Площа') || topic.includes('Планіметрія')) {
+                    const a = Math.floor(Math.random() * 10) + 2;
+                    const b = Math.floor(Math.random() * 10) + 2;
+                    text = `Знайдіть площу прямокутника зі сторонами ${a} см та ${b} см.`;
+                    correct = a * b;
+                    opts = [correct, a+b, (a*b)/2, a*b+2].sort(() => Math.random() - 0.5);
+                    expl = `Площа = a • b = ${a} • ${b} = ${correct} см².`;
+                } else if (topic.includes('Похідна')) {
+                    const a = Math.floor(Math.random() * 5) + 1;
+                    const n = Math.floor(Math.random() * 3) + 2; // 2, 3, 4
+                    const powerStr = n === 2 ? '²' : n === 3 ? '³' : '⁴';
+                    const nextPowerStr = (n-1) === 1 ? '' : (n-1) === 2 ? '²' : '³';
+                    const correctStr = `${a*n}x${nextPowerStr}`;
+                    
+                    text = `Знайдіть похідну функції f(x) = ${a}x${powerStr}`;
+                    correct = correctStr;
+                    opts = [correctStr, `${a}x${nextPowerStr}`, `${a*n}x${powerStr}`, `${n}x${a}`].sort(() => Math.random() - 0.5);
+                    expl = `За формулою (xⁿ)' = n • xⁿ⁻¹. Отже, (${a}x${powerStr})' = ${a} • ${n}x${nextPowerStr} = ${correctStr}.`;
+                } else if (topic.includes('Відсотки')) {
+                    const total = (Math.floor(Math.random() * 10) + 1) * 100;
+                    const percent = (Math.floor(Math.random() * 5) + 1) * 10;
+                    text = `Знайдіть ${percent}% від числа ${total}.`;
+                    correct = (total * percent) / 100;
+                    opts = [correct, correct + 10, correct - 5, total / 2].sort(() => Math.random() - 0.5);
+                    expl = `Щоб знайти відсоток, треба число помножити на відсоток і поділити на 100: (${total} • ${percent}) : 100 = ${correct}.`;
+                } else if (topic.includes('Тригонометрія')) {
+                    text = `Чому дорівнює sin(30°) + cos(60°)?`;
+                    correct = 1;
+                    opts = [1, 0.5, 1.5, 0].sort(() => Math.random() - 0.5);
+                    expl = `sin(30°) = 0.5, cos(60°) = 0.5. Сума = 1.`;
+                } else if (topic.includes('Степені') || topic.includes('Ірраціональні')) {
+                    const a = Math.floor(Math.random() * 5) + 2;
+                    const n = Math.floor(Math.random() * 3) + 2;
+                    const powerStr = n === 2 ? '²' : n === 3 ? '³' : '⁴';
+                    text = `Обчисліть: ${a}${powerStr}`;
+                    correct = Math.pow(a, n);
+                    opts = [correct, a*n, correct+5, correct-2].sort(() => Math.random() - 0.5);
+                    expl = `${a}${powerStr} = ${Array(n).fill(a).join(' • ')} = ${correct}. (Степінь — це число, яке показує, скільки разів треба помножити основу саму на себе).`;
+                } else {
+                    const a = Math.floor(Math.random() * 20) + 1;
+                    const b = Math.floor(Math.random() * 20) + 1;
+                    text = `[${topic}] Обчисліть: ${a} + ${b} • 2`;
+                    correct = a + b*2;
+                    opts = [correct, (a+b)*2, a+b, correct+5].sort(() => Math.random() - 0.5);
+                    expl = `Спочатку виконуємо множення: ${b} • 2 = ${b*2}, потім додавання: ${a} + ${b*2} = ${correct}.`;
+                }
+                
+                pool.push({ id: `m_${i}`, topic, text, options: opts.map(String), correctIndex: opts.indexOf(correct), explanation: expl });
+            }
+            return pool;
+        }
+
+        // --- ОТРИМАННЯ ПИТАНЬ ---
+        function getQuestionsForMatch(subject, topic) {
+            let pool = [];
+            
+            if (subject === 'math') {
+                pool = generateMathQuestions(topic, 10);
+            } else {
+                const allSubjectQuestions = REAL_QUESTIONS[subject] || [];
+                let filtered = topic ? allSubjectQuestions.filter(q => q.topic === topic) : allSubjectQuestions;
+                
+                if (filtered.length < 5) {
+                    const fallback = allSubjectQuestions.filter(q => !filtered.includes(q));
+                    filtered = [...filtered, ...fallback];
+                }
+                if (filtered.length === 0) {
+                    filtered = [{ topic: 'Загальне', text: 'Питання відсутнє', options: ['А', 'Б', 'В', 'Г'], correctIndex: 0, explanation: 'Немає питань' }];
+                }
+
+                pool = [...filtered].sort(() => Math.random() - 0.5).slice(0, 10).map((q, i) => ({ ...q, id: `${subject}_${i}` }));
+            }
+
+            return pool.map(q => {
+                const indices = [0, 1, 2, 3];
+                for (let i = indices.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [indices[i], indices[j]] = [indices[j], indices[i]];
+                }
+                return { ...q, options: indices.map(i => q.options[i]), correctIndex: indices.indexOf(q.correctIndex) };
+            });
+        }
+
+        // --- МАГАЗИН ТА ЮЗЕР ---
+        const STORE_FRAMES = [
+            { id: 'f0', name: 'Стандартна', price: 0, style: 'border-2 border-slate-700', icon: '⚪' },
+            { id: 'f1', name: 'Неонова', price: 150, style: 'border-2 border-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.8)]', icon: '✨' },
+            { id: 'f2', name: 'Золотий', price: 300, style: 'border-2 border-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.8)]', icon: '👑' }
+        ];
+
+        const DEFAULT_USER = {
+            name: 'Новачок', institution: 'Введіть ваш заклад', avatarUrl: null, coins: 0, xp: 0, level: 1,
+            equippedFrameId: 'f0', unlockedFrames: ['f0'], matchesPlayed: 0, wins: 0, isRegistered: false, isPremium: false
+        };
+
+        function App() {
+            const [isLoading, setIsLoading] = useState(() => sessionStorage.getItem('app_loaded') !== 'true');
+            
+            const [user, setUser] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('nmt_arena_premium');
+                    if (saved) return { ...DEFAULT_USER, ...JSON.parse(saved) };
+                } catch (e) {}
+                return DEFAULT_USER;
+            });
+
+            const [isOnboarding, setIsOnboarding] = useState(!user.isRegistered);
+            const [onboardName, setOnboardName] = useState('');
+            const [onboardSchool, setOnboardSchool] = useState('');
+            const [schoolSearch, setSchoolSearch] = useState('');
+            const [showSchoolList, setShowSchoolList] = useState(false);
+
+            const [activeTab, setActiveTab] = useState('home');
+            const [matchState, setMatchState] = useState('idle'); 
+            const [activeSubject, setActiveSubject] = useState(null);
+            const [activeTopic, setActiveTopic] = useState(null);
+            
+            const [questions, setQuestions] = useState([]);
+            const [qIndex, setQIndex] = useState(0);
+            const [timeLeft, setTimeLeft] = useState(25);
+            const [isLocked, setIsLocked] = useState(false);
+            const [selectedAns, setSelectedAns] = useState(null);
+            const [userScore, setUserScore] = useState(0);
+            const [botScore, setBotScore] = useState(0);
+            const [bot, setBot] = useState(null);
+            const [log, setLog] = useState([]);
+
+            const [showEdit, setShowEdit] = useState(false);
+            const [showExitConfirm, setShowExitConfirm] = useState(false);
+            const [tempName, setTempName] = useState(user.name);
+            const [tempInst, setTempInst] = useState(user.institution);
+            const [selectedDrawerSubject, setSelectedDrawerSubject] = useState('math');
+            const [isHidden, setIsHidden] = useState(false);
+
+            useEffect(() => {
+                if (isLoading) {
+                    const timer = setTimeout(() => { setIsLoading(false); sessionStorage.setItem('app_loaded', 'true'); }, 1500);
+                    return () => clearTimeout(timer);
+                }
+            }, [isLoading]);
+
+            // ФІКС ІКОНОК: Викликаємо ініціалізацію іконок при КОЖНОМУ рендері
+            useEffect(() => {
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            }); 
+
+            useEffect(() => {
+                try { localStorage.setItem('nmt_arena_premium', JSON.stringify(user)); } catch(e) {}
+            }, [user]);
+
+            // --- ЗГОРТАННЯ (Звук і таймер) ---
+            useEffect(() => {
+                const handleVisibility = () => {
+                    if (document.hidden) {
+                        setIsHidden(true);
+                        sfx.suspend();
+                    } else {
+                        setIsHidden(false);
+                        sfx.resume();
+                    }
+                };
+                document.addEventListener("visibilitychange", handleVisibility);
+                return () => document.removeEventListener("visibilitychange", handleVisibility);
+            }, []);
+
+            const resetApp = () => {
+                if (window.confirm("Видалити весь прогрес?")) {
+                    localStorage.removeItem('nmt_arena_premium');
+                    sessionStorage.removeItem('app_loaded');
+                    window.location.reload();
+                }
+            };
+
+            const handleOnboardingSubmit = () => {
+                if (!onboardName.trim() || !onboardSchool) return alert('Введіть нікнейм та оберіть заклад.');
+                sfx.playWin();
+                setUser(prev => ({ ...prev, name: onboardName.trim(), institution: onboardSchool, isRegistered: true }));
+                setIsOnboarding(false);
+            };
+
+            // --- ЛОГІКА ГРИ ---
+            const startMatch = (subjectId, topicName = null) => {
+                sfx.playClick();
+                setActiveSubject(subjectId);
+                setActiveTopic(topicName);
+                setMatchState('matching');
+                
+                setQuestions(getQuestionsForMatch(subjectId, topicName));
+                setQIndex(0); setUserScore(0); setBotScore(0); setLog([]); setSelectedAns(null); setIsLocked(false); setShowExitConfirm(false);
+                setTimeLeft(subjectId === 'math' ? 45 : 25);
+
+                const botNames = ['AlphaBot', 'Neo_Student', 'TopChallenger', 'CyberBrain'];
+                setBot({ name: botNames[Math.floor(Math.random() * botNames.length)], frame: STORE_FRAMES[1] });
+
+                setTimeout(() => setMatchState('playing'), 1500);
+            };
+
+            const confirmExitMatch = () => {
+                sfx.playWrong();
+                setUser(prev => ({ ...prev, matchesPlayed: prev.matchesPlayed + 1 }));
+                setMatchState('idle');
+                setShowExitConfirm(false);
+            };
+
+            useEffect(() => {
+                if (matchState !== 'playing' || isLocked || isHidden || showExitConfirm) return;
+                if (timeLeft <= 0) { handleAnswer(-1); return; }
+                const t = setTimeout(() => setTimeLeft(prev => prev - 1), 1000);
+                return () => clearTimeout(t);
+            }, [matchState, isLocked, timeLeft, isHidden, showExitConfirm]);
+
+            const handleAnswer = (idx) => {
+                if (isLocked || !questions[qIndex]) return;
+                setIsLocked(true);
+                setSelectedAns(idx);
+
+                const q = questions[qIndex];
+                const isCorrect = idx === q.correctIndex;
+                const botCorrect = Math.random() < 0.7;
+                const finalUser = userScore + (isCorrect ? 100 : 0);
+                const finalBot = botScore + (botCorrect ? 100 : 0);
+
+                if (isCorrect) { sfx.playCorrect(); setUserScore(finalUser); } else { sfx.playWrong(); }
+                if (botCorrect) setBotScore(finalBot);
+
+                setLog(prev => [...prev, { q: q.text, topic: q.topic, options: q.options, correctIndex: q.correctIndex, chosen: idx, isCorrect, expl: q.explanation }]);
+
+                setTimeout(() => {
+                    if (qIndex + 1 < questions.length) {
+                        setQIndex(prev => prev + 1); setSelectedAns(null); setIsLocked(false);
+                        setTimeLeft(activeSubject === 'math' ? 45 : 25);
+                    } else {
+                        finishMatch(finalUser, finalBot);
+                    }
+                }, 1200);
+            };
+
+            const finishMatch = (fUser, fBot) => {
+                sfx.playWin();
+                setMatchState('finished');
+                const won = fUser >= fBot;
+                const coinsEarned = won ? 60 : 15;
+                const xpEarned = won ? 120 : 30;
+
+                setUser(prev => {
+                    const newXp = prev.xp + xpEarned;
+                    return {
+                        ...prev, coins: prev.coins + coinsEarned, xp: newXp, level: Math.floor(newXp / 500) + 1,
+                        matchesPlayed: prev.matchesPlayed + 1, wins: won ? prev.wins + 1 : prev.wins
+                    };
+                });
+
+                if (won && window.confetti) window.confetti({ particleCount: 150, spread: 90, origin: { y: 0.6 }, colors: ['#3b82f6', '#8b5cf6', '#10b981'] });
+            };
+
+            const buyFrame = (frame) => {
+                sfx.playClick();
+                if (user.coins < frame.price) return alert('Недостатньо монет!');
+                setUser(prev => ({ ...prev, coins: prev.coins - frame.price, unlockedFrames: [...prev.unlockedFrames, frame.id], equippedFrameId: frame.id }));
+            };
+
+            const buyPremium = () => {
+                sfx.playClick();
+                if (user.coins < 500) return alert('Потрібно 500 монет для покупки Premium!');
+                setUser(prev => ({ ...prev, coins: prev.coins - 500, isPremium: true }));
+                alert('Вітаємо! Premium активовано. Вам доступні Конспекти.');
+            };
+
+            const currentFrame = STORE_FRAMES.find(f => f.id === user.equippedFrameId) || STORE_FRAMES[0];
+            const filteredSchools = SCHOOLS_LIST.filter(s => s.toLowerCase().includes(schoolSearch.toLowerCase()));
+            const missedTopics = [...new Set(log.filter(item => !item.isCorrect).map(item => item.topic))];
+            const accuracy = log.length > 0 ? Math.round((log.filter(item => item.isCorrect).length / log.length) * 100) : 0;
+
+            // --- ЕКРАНИ ---
+            if (isLoading) {
+                return (
+                    <div className="flex flex-col items-center justify-center h-full loading-bg">
+                        <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center shadow-lg mb-6 animate-pulse-glow">
+                            <i data-lucide="swords" className="w-12 h-12 text-white"></i>
+                        </div>
+                        <h1 className="text-3xl font-black text-white">NMT ARENA</h1>
+                    </div>
+                );
+            }
+
+            if (isOnboarding) {
+                return (
+                    <div className="flex flex-col h-full bg-bgDark px-6 justify-center relative">
+                        <h2 className="text-2xl font-black text-white mb-6 text-center">Створити профіль</h2>
+                        <div className="space-y-4">
+                            <input type="text" value={onboardName} onChange={(e) => setOnboardName(e.target.value)} placeholder="Ваш нікнейм" className="w-full bg-cardDark border border-slate-700 rounded-2xl px-5 py-4 text-sm text-white focus:border-blue-500 outline-none" />
+                            <div className="relative">
+                                <div onClick={() => setShowSchoolList(!showSchoolList)} className="w-full bg-cardDark border border-slate-700 rounded-2xl px-5 py-4 text-sm text-white flex justify-between items-center cursor-pointer">
+                                    <span className={onboardSchool ? 'text-white' : 'text-slate-500'}>{onboardSchool || 'Оберіть заклад'}</span>
+                                    <i data-lucide="chevron-down" className="w-4 h-4 text-slate-400"></i>
+                                </div>
+                                {showSchoolList && (
+                                    <div className="absolute top-full left-0 w-full mt-2 bg-cardDark border border-slate-700 rounded-2xl shadow-xl z-50 max-h-60 overflow-y-auto hide-scrollbar">
+                                        <input type="text" value={schoolSearch} onChange={(e) => setSchoolSearch(e.target.value)} placeholder="Пошук..." className="w-full bg-slate-900 px-4 py-3 text-xs text-white border-b border-slate-700 outline-none" />
+                                        {filteredSchools.map((s, i) => (
+                                            <div key={i} onClick={() => { setOnboardSchool(s); setShowSchoolList(false); }} className="px-4 py-3 text-xs text-slate-300 hover:bg-slate-800 cursor-pointer border-b border-slate-800">{s}</div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <button onClick={handleOnboardingSubmit} className="w-full py-4 rounded-2xl bg-blue-600 text-white font-black text-sm mt-4 shadow-lg active:scale-95 transition-all">Почати гру</button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="flex flex-col h-full relative">
+                    <header className="flex justify-between items-center p-5 pb-2 z-20 absolute top-0 w-full bg-gradient-to-b from-bgDark to-transparent pt-6">
+                        <div className="flex items-center space-x-3">
+                            <div className={`w-11 h-11 rounded-full flex items-center justify-center bg-cardDark ${currentFrame.style}`}><span className="text-sm font-bold text-slate-300">{user.name.charAt(0)}</span></div>
+                            <h1 className="text-sm font-bold text-white truncate max-w-[120px]">{user.name}</h1>
+                        </div>
+                        <div className="flex space-x-2">
+                            <div className="glass-panel px-3 py-1.5 rounded-xl text-xs font-bold text-amber-400">🪙 {user.coins}</div>
+                            <div className="glass-panel px-3 py-1.5 rounded-xl text-xs font-bold text-blue-400">⚡ {user.xp}</div>
+                        </div>
+                    </header>
+
+                    <main className="flex-grow overflow-y-auto hide-scrollbar pt-24 pb-28 px-5">
+                        
+                        {/* ГОЛОВНА */}
+                        {matchState === 'idle' && activeTab === 'home' && (
+                            <div className="space-y-6 animate-slide-up">
+                                {user.isPremium && (
+                                    <div className="glass-panel rounded-3xl p-5 bg-gradient-to-r from-amber-500/20 to-orange-600/20 border border-amber-500/30 flex justify-between items-center">
+                                        <div>
+                                            <h3 className="text-amber-400 font-black text-sm">Premium Активовано</h3>
+                                            <p className="text-[10px] text-amber-200/70">Доступні конспекти</p>
+                                        </div>
+                                        <button onClick={() => setActiveTab('conspect')} className="px-4 py-2 bg-amber-500 text-black text-xs font-bold rounded-xl">Відкрити</button>
+                                    </div>
+                                )}
+                                <div className="glass-panel rounded-3xl p-6 bg-gradient-to-br from-blue-900/40 to-slate-900/40 border border-blue-500/20">
+                                    <h2 className="text-2xl font-black text-white mb-2">Готовий до<br/>виклику?</h2>
+                                    <div className="flex space-x-4 text-xs font-bold mt-4">
+                                        <div><span className="text-slate-400">Матчів: </span><span className="text-white text-lg">{user.matchesPlayed}</span></div>
+                                        <div><span className="text-slate-400">Перемог: </span><span className="text-emerald-400 text-lg">{user.wins}</span></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-200 mb-3">Швидкий старт</h3>
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {[
+                                            { id: 'math', title: 'Математика', icon: 'calculator', color: 'from-blue-500/20 to-blue-600/5' },
+                                            { id: 'ukr', title: 'Українська', icon: 'book-open', color: 'from-purple-500/20 to-purple-600/5' },
+                                            { id: 'history', title: 'Історія', icon: 'landmark', color: 'from-amber-500/20 to-amber-600/5' },
+                                            { id: 'geo', title: 'Географія', icon: 'globe', color: 'from-emerald-500/20 to-emerald-600/5' },
+                                            { id: 'eng', title: 'Англійська', icon: 'languages', color: 'from-cyan-500/20 to-cyan-600/5' },
+                                            { id: 'phy', title: 'Фізика', icon: 'atom', color: 'from-rose-500/20 to-rose-600/5' }
+                                        ].map((s, i) => (
+                                            <button key={s.id} onClick={() => startMatch(s.id)} className={`glass-panel p-3 rounded-2xl flex flex-col items-center justify-center bg-gradient-to-br ${s.color} h-24 active:scale-95 transition-all`}>
+                                                <i data-lucide={s.icon} className="w-6 h-6 text-white mb-2"></i>
+                                                <span className="text-[10px] font-bold text-white text-center leading-tight">{s.title}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ТЕМИ */}
+                        {matchState === 'idle' && activeTab === 'topics' && (
+                            <div className="animate-slide-up pb-10">
+                                <h2 className="text-xl font-black text-white mb-4">Тренування тем</h2>
+                                <div className="flex space-x-2 overflow-x-auto hide-scrollbar mb-4 pb-2">
+                                    {Object.keys(SUBJECTS_TOPICS).map(subj => (
+                                        <button key={subj} onClick={() => setSelectedDrawerSubject(subj)} className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${selectedDrawerSubject === subj ? 'bg-blue-600 text-white' : 'glass-panel text-slate-300'}`}>
+                                            {subj === 'math' ? 'Математика' : subj === 'ukr' ? 'Українська' : subj === 'history' ? 'Історія' : subj === 'geo' ? 'Географія' : subj === 'eng' ? 'Англійська' : subj === 'phy' ? 'Фізика' : subj === 'chem' ? 'Хімія' : 'Біологія'}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="space-y-2">
+                                    {SUBJECTS_TOPICS[selectedDrawerSubject].map((topic) => (
+                                        <button key={topic} onClick={() => startMatch(selectedDrawerSubject, topic)} className="w-full glass-panel p-4 rounded-xl flex justify-between items-center hover:bg-slate-800 active:scale-[0.98] transition-all">
+                                            <span className="text-sm text-slate-200">{topic}</span>
+                                            <i data-lucide="chevron-right" className="w-4 h-4 text-slate-500"></i>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* КОНСПЕКТИ */}
+                        {matchState === 'idle' && activeTab === 'conspect' && (
+                            <div className="animate-slide-up space-y-4">
+                                <h2 className="text-xl font-black text-white flex items-center gap-2"><i data-lucide="crown" className="text-amber-400"></i> Конспекти Premium</h2>
+                                <div className="glass-panel p-5 rounded-2xl border border-amber-500/20">
+                                    <h3 className="text-sm font-bold text-amber-300 mb-2">Математика: Головні формули</h3>
+                                    <p className="text-xs text-slate-300 whitespace-pre-line leading-relaxed">
+                                        1. Квадратне рівняння: ax² + bx + c = 0, D = b² - 4ac.{"\n"}
+                                        2. Теорема Вієта: x₁ + x₂ = -b : a, x₁ • x₂ = c : a.{"\n"}
+                                        3. Похідна: (xⁿ)' = n • xⁿ⁻¹.{"\n"}
+                                        4. Тригонометрія: sin²a + cos²a = 1.{"\n"}
+                                        5. Площа трикутника: S = (a • h) : 2.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* МАГАЗИН */}
+                        {matchState === 'idle' && activeTab === 'store' && (
+                            <div className="space-y-6 animate-slide-up">
+                                {!user.isPremium && (
+                                    <div className="glass-panel rounded-3xl p-6 bg-gradient-to-br from-amber-600/30 to-orange-600/10 border border-amber-500/40 text-center">
+                                        <i data-lucide="crown" className="w-10 h-10 text-amber-400 mx-auto mb-2"></i>
+                                        <h3 className="text-lg font-black text-white mb-1">NMT Arena Premium</h3>
+                                        <p className="text-xs text-amber-200/80 mb-4">Доступ до ексклюзивних конспектів.</p>
+                                        <button onClick={buyPremium} className="w-full py-3 rounded-xl bg-amber-500 text-black font-black text-sm shadow-[0_0_20px_rgba(245,158,11,0.4)] active:scale-95 transition-all">Купити за 500 🪙</button>
+                                    </div>
+                                )}
+                                <div>
+                                    <h3 className="text-sm font-bold text-white mb-3">Аватарні рамки</h3>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {STORE_FRAMES.map(f => (
+                                            <div key={f.id} className="glass-panel rounded-2xl p-4 flex flex-col items-center">
+                                                <div className={`w-14 h-14 rounded-full bg-slate-900 mb-3 ${f.style}`}></div>
+                                                <h4 className="text-xs font-bold text-white">{f.name}</h4>
+                                                <p className="text-[10px] text-amber-400 mb-2">{f.price === 0 ? 'Безкоштовно' : `🪙 ${f.price}`}</p>
+                                                {user.unlockedFrames.includes(f.id) ? (
+                                                    <button onClick={() => setUser(p => ({...p, equippedFrameId: f.id}))} className="w-full py-1.5 bg-slate-800 rounded-lg text-xs font-bold text-white">Одягти</button>
+                                                ) : (
+                                                    <button onClick={() => buyFrame(f)} className="w-full py-1.5 bg-blue-600 rounded-lg text-xs font-bold text-white">Купити</button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ПРОФІЛЬ */}
+                        {matchState === 'idle' && activeTab === 'profile' && (
+                            <div className="space-y-5 animate-slide-up">
+                                <div className="glass-panel rounded-3xl p-6 flex flex-col items-center">
+                                    <div className={`w-20 h-20 rounded-full flex items-center justify-center bg-slate-900 mb-3 ${currentFrame.style}`}><span className="text-2xl font-bold text-slate-400">{user.name.charAt(0)}</span></div>
+                                    <h2 className="text-lg font-bold text-white">{user.name}</h2>
+                                    <p className="text-xs text-slate-400 mb-4">{user.institution}</p>
+                                    <button onClick={() => setShowEdit(true)} className="px-6 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold">Редагувати</button>
+                                </div>
+                                <button onClick={resetApp} className="w-full py-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 text-xs font-bold">Скинути прогрес</button>
+                            </div>
+                        )}
+
+                        {/* ПОШУК ГРИ */}
+                        {matchState === 'matching' && (
+                            <div className="h-full flex flex-col items-center justify-center">
+                                <div className="w-20 h-20 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-6"></div>
+                                <h2 className="text-xl font-black text-white">Пошук суперника...</h2>
+                            </div>
+                        )}
+
+                        {/* ГРА */}
+                        {matchState === 'playing' && questions.length > 0 && (
+                            <div className="flex flex-col h-full animate-slide-up">
+                                <div className="flex justify-between items-center bg-cardDark border border-slate-800 rounded-2xl p-3 mb-4">
+                                    
+                                    {/* ХРЕСТИК ЗЛІВА ВГОРІ (Кнопка виходу) */}
+                                    <button onClick={() => setShowExitConfirm(true)} className="p-2 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 active:scale-95 transition-all shadow-[0_0_10px_rgba(239,68,68,0.2)]">
+                                        <i data-lucide="x" className="w-6 h-6"></i>
+                                    </button>
+
+                                    {/* РАХУНОК ТА ТАЙМЕР */}
+                                    <div className="flex items-center space-x-4">
+                                        <div className="flex items-center space-x-2">
+                                            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs text-blue-400 font-bold">{user.name.charAt(0)}</div>
+                                            <div><p className="text-[10px] text-slate-400">Ви</p><p className="text-sm font-black text-blue-400">{userScore}</p></div>
+                                        </div>
+                                        
+                                        <div className={`px-4 py-1.5 rounded-full text-sm font-black ${timeLeft <= 5 ? 'bg-red-500/20 text-red-400' : 'bg-slate-800 text-amber-400'}`}>{timeLeft}s</div>
+                                        
+                                        <div className="flex items-center space-x-2">
+                                            <div><p className="text-[10px] text-slate-400 text-right">{bot?.name}</p><p className="text-sm font-black text-pink-400 text-right">{botScore}</p></div>
+                                            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs text-pink-400 font-bold">{bot?.name.charAt(0)}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex-grow flex flex-col justify-center">
+                                    <div className="mb-6">
+                                        <span className="inline-block px-2.5 py-1 rounded-md bg-blue-500/20 text-blue-300 text-[10px] font-bold mb-3">{questions[qIndex].topic}</span>
+                                        <h3 className="text-lg font-bold text-white">{questions[qIndex].text}</h3>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {questions[qIndex].options.map((opt, i) => {
+                                            let btnClass = "w-full p-4 rounded-xl text-left border border-slate-700/50 bg-cardDark hover:bg-slate-800 flex items-center space-x-3 transition-all";
+                                            if (selectedAns !== null) {
+                                                if (i === questions[qIndex].correctIndex) btnClass = "w-full p-4 rounded-xl border border-emerald-500 bg-emerald-500/20 text-emerald-100 flex items-center space-x-3";
+                                                else if (i === selectedAns) btnClass = "w-full p-4 rounded-xl border border-red-500 bg-red-500/20 text-red-100 flex items-center space-x-3";
+                                                else btnClass = "w-full p-4 rounded-xl border border-slate-800 bg-slate-900/50 opacity-40 flex items-center space-x-3";
+                                            }
+                                            return <button key={i} disabled={isLocked} onClick={() => handleAnswer(i)} className={btnClass}><span className="w-6 h-6 rounded bg-slate-800 flex items-center justify-center text-xs font-bold">{['A','B','C','D'][i]}</span><span className="text-sm">{opt}</span></button>;
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* РЕЗУЛЬТАТИ */}
+                        {matchState === 'finished' && (
+                            <div className="h-full flex flex-col animate-slide-up overflow-y-auto hide-scrollbar pb-10">
+                                <div className="text-center py-6">
+                                    <div className="text-6xl mb-3">{userScore >= botScore ? '🏆' : '💔'}</div>
+                                    <h2 className="text-3xl font-black text-white">{userScore >= botScore ? 'Перемога!' : 'Поразка'}</h2>
+                                    <p className="text-sm text-slate-400">Рахунок: {userScore} - {botScore}</p>
+                                </div>
+                                <div className="glass-panel rounded-2xl p-5 mb-4">
+                                    <h3 className="text-sm font-bold text-white mb-3">Аналіз знань (Точність: {accuracy}%)</h3>
+                                    {missedTopics.length > 0 ? (
+                                        <div>
+                                            <p className="text-xs text-slate-400 mb-2">Теми для повторення:</p>
+                                            <div className="flex flex-wrap gap-2 mb-3">
+                                                {missedTopics.map((t, idx) => <span key={idx} className="px-3 py-1.5 bg-amber-500/10 text-amber-300 text-xs rounded-lg">{t}</span>)}
+                                            </div>
+                                            <button onClick={() => startMatch(activeSubject, missedTopics[0])} className="w-full py-2.5 rounded-xl bg-amber-500/20 text-amber-400 text-xs font-bold">Тренувати ці теми</button>
+                                        </div>
+                                    ) : <p className="text-sm text-emerald-300 font-bold">Бездоганно!</p>}
+                                </div>
+                                <div className="flex space-x-3 mt-auto">
+                                    <button onClick={() => startMatch(activeSubject, activeTopic)} className="flex-1 py-3.5 rounded-xl bg-blue-600 text-white font-bold">Реванш</button>
+                                    <button onClick={() => setMatchState('idle')} className="flex-1 py-3.5 rounded-xl bg-slate-800 text-white font-bold">На головну</button>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {/* НИЖНЯ НАВІГАЦІЯ */}
+                    {matchState === 'idle' && (
+                        <nav className="absolute bottom-0 w-full glass-nav px-2 py-3 flex justify-around z-20 pb-5">
+                            {[
+                                { id: 'home', icon: 'home', label: 'Головна' },
+                                { id: 'topics', icon: 'layers', label: 'Теми' },
+                                { id: 'conspect', icon: 'book-open', label: 'Конспекти', premium: true },
+                                { id: 'store', icon: 'shopping-bag', label: 'Магазин' },
+                                { id: 'profile', icon: 'user', label: 'Профіль' }
+                            ].map(tab => (
+                                <button key={tab.id} onClick={() => { if (tab.premium && !user.isPremium) return alert('Купуйте Premium у магазині!'); setActiveTab(tab.id); }} className={`flex flex-col items-center ${activeTab === tab.id ? 'text-blue-500' : 'text-slate-500'} ${tab.premium && !user.isPremium ? 'opacity-50' : ''}`}>
+                                    <i data-lucide={tab.icon} className="w-5 h-5"></i>
+                                    <span className="text-[10px] font-bold">{tab.label}</span>
+                                </button>
+                            ))}
+                        </nav>
+                    )}
+
+                    {/* МОДАЛКА РЕДАГУВАННЯ */}
+                    {showEdit && (
+                        <div className="fixed inset-0 z-[999] bg-black/80 flex items-end">
+                            <div className="glass-panel w-full p-6 space-y-4 rounded-t-3xl pb-8">
+                                <h3 className="text-lg font-bold text-white">Редагувати</h3>
+                                <input type="text" value={tempName} onChange={e => setTempName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white" />
+                                <input type="text" value={tempInst} onChange={e => setTempInst(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white" />
+                                <div className="flex space-x-3 pt-2">
+                                    <button onClick={() => setShowEdit(false)} className="flex-1 py-3 rounded-xl bg-slate-800 text-white font-bold">Відміна</button>
+                                    <button onClick={() => { setUser(p => ({...p, name: tempName, institution: tempInst})); setShowEdit(false); }} className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold">Зберегти</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* МОДАЛКА ВИХОДУ З ГРИ (ЗАВЖДИ ЗВЕРХУ) */}
+                    {showExitConfirm && (
+                        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-5 animate-fade-in">
+                            <div className="glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-scale-in">
+                                <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
+                                    <i data-lucide="alert-triangle" className="w-8 h-8 text-red-400"></i>
+                                </div>
+                                <h3 className="text-lg font-black text-white mb-2">Вийти з матчу?</h3>
+                                <p className="text-xs text-slate-400 mb-6">Якщо ви вийдете зараз, цей матч зарахується як поразка.</p>
+                                <div className="flex space-x-3">
+                                    <button onClick={() => setShowExitConfirm(false)} className="flex-1 py-3 rounded-xl bg-slate-800 text-white text-sm font-bold">Продовжити</button>
+                                    <button onClick={confirmExitMatch} className="flex-1 py-3 rounded-xl bg-red-600 text-white text-sm font-bold shadow-lg">Вийти</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
