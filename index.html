@@ -2,7 +2,7 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NMT Arena - Premium</title>
     
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='112' fill='%23050810'/><path d='M256 80 L416 144 L416 288 C416 400 256 480 256 480 C256 480 96 400 96 288 L96 144 Z' fill='none' stroke='%233b82f6' stroke-width='24'/><path d='M150 150 L362 362 M362 150 L150 362' stroke='%238b5cf6' stroke-width='24' stroke-linecap='round'/></svg>">
@@ -11,6 +11,7 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
@@ -23,27 +24,26 @@
                     colors: {
                         bgDark: '#050810',
                         cardDark: '#111827',
+                        accentBlue: '#3b82f6',
+                        accentPurple: '#8b5cf6',
                     },
                     animation: {
                         'slide-up': 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards',
                         'fade-in': 'fadeIn 0.3s ease-out forwards',
+                        'pulse-glow': 'pulseGlow 2s infinite',
                         'scale-in': 'scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards',
                     },
                     keyframes: {
                         slideUp: { '0%': { opacity: '0', transform: 'translateY(20px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
                         fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
                         scaleIn: { '0%': { opacity: '0', transform: 'scale(0.95)' }, '100%': { opacity: '1', transform: 'scale(1)' } },
+                        pulseGlow: { '0%, 100%': { boxShadow: '0 0 15px rgba(59, 130, 246, 0.3)' }, '50%': { boxShadow: '0 0 30px rgba(59, 130, 246, 0.8)' } }
                     }
                 }
             }
         }
     </script>
     <style>
-        html, body, #root {
-            height: 100%;
-            margin: 0;
-            padding: 0;
-        }
         body {
             font-family: 'Inter', sans-serif;
             background-color: #050810;
@@ -59,7 +59,7 @@
             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
         }
         .glass-nav {
-            background: rgba(5, 8, 16, 0.95);
+            background: rgba(5, 8, 16, 0.85);
             backdrop-filter: blur(24px);
             -webkit-backdrop-filter: blur(24px);
             border-top: 1px solid rgba(255, 255, 255, 0.08);
@@ -70,32 +70,15 @@
         ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 999px; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         
+        .stagger-item { opacity: 0; animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; will-change: transform, opacity; }
         .loading-bg { background: radial-gradient(circle at 50% 50%, #111827 0%, #050810 100%); }
     </style>
 </head>
-<body class="bg-bgDark text-slate-100">
-    <div id="root" class="w-full relative overflow-hidden flex flex-col bg-bgDark"></div>
+<body class="min-h-screen flex flex-col bg-bgDark text-slate-100">
+    <div id="root" class="flex-grow flex flex-col max-w-2xl mx-auto w-full h-screen relative overflow-hidden"></div>
 
     <script type="text/babel">
         const { useState, useEffect } = React;
-
-        // --- ЗАХИСТ ВІД ПОМИЛОК (Щоб не було білого екрану) ---
-        class ErrorBoundary extends React.Component {
-            constructor(props) { super(props); this.state = { hasError: false, error: null }; }
-            static getDerivedStateFromError(error) { return { hasError: true, error }; }
-            render() {
-                if (this.state.hasError) {
-                    return (
-                        <div className="p-5 text-white flex flex-col items-center justify-center h-screen text-center">
-                            <h2 className="text-xl font-bold text-red-500 mb-2">Сталася помилка 😢</h2>
-                            <p className="text-sm text-gray-400 mb-4">{this.state.error?.toString()}</p>
-                            <button onClick={() => window.location.reload()} className="px-4 py-2 bg-blue-600 rounded">Оновити сторінку</button>
-                        </div>
-                    );
-                }
-                return this.props.children;
-            }
-        }
 
         // --- ЗВУКИ ---
         class AudioFX {
@@ -148,7 +131,7 @@
         }
         const sfx = new AudioFX();
 
-        // --- ДАНІ ---
+        // --- СПИСОК ЗАКЛАДІВ ---
         const SCHOOLS_LIST = [
             "Київський національний університет ім. Тараса Шевченка",
             "НТУУ 'КПІ ім. Ігоря Сікорського'",
@@ -162,8 +145,19 @@
             "Інший заклад"
         ];
 
+        // --- ТЕМИ ---
         const SUBJECTS_TOPICS = {
-            math: ['Дійсні числа', 'Пропорції', 'Відсотки', 'Степені та корені', 'Раціональні вирази', 'Ірраціональні вирази', 'Тригонометричні вирази', 'Логарифмічні вирази', 'Лінійні рівняння', 'Квадратні рівняння', 'Нерівності', 'Текстові задачі', 'Функції та графіки', 'Похідна', 'Первісна та інтеграл', 'Комбінаторика', 'Ймовірність', 'Статистика', 'Планіметрія', 'Коло і круг', 'Координати та вектори', 'Стереометрія', 'Тіла обертання'],
+            math: [
+                'Дійсні числа', 'Відношення та пропорції', 'Відсотки', 'Степені та корені', 
+                'Раціональні вирази', 'Ірраціональні вирази', 'Тригонометричні вирази', 
+                'Логарифмічні вирази', 'Лінійні рівняння', 'Квадратні рівняння', 
+                'Раціональні рівняння', 'Ірраціональні рівняння', 'Показникові рівняння', 
+                'Логарифмічні рівняння', 'Тригонометричні рівняння', 'Нерівності', 
+                'Текстові задачі', 'Функції та графіки', 'Похідна', 'Первісна та інтеграл',
+                'Комбінаторика', 'Ймовірність', 'Статистика', 'Планіметрія (трикутники)',
+                'Планіметрія (чотирикутники)', 'Коло і круг', 'Координати та вектори',
+                'Стереометрія (призма, піраміда)', 'Тіла обертання'
+            ],
             ukr: ['Орфоепія (Наголос)', 'Орфографія (Апостроф)', 'Лексикологія', 'Фразеологія', 'Синтаксис'],
             history: ['Київська Русь', 'Козацька доба', 'XX Століття', 'Сучасна історія'],
             geo: ['Фізична географія', 'Економічна географія', 'Карпати', 'Річки'],
@@ -173,6 +167,7 @@
             bio: ['Клітина', 'Генетика', 'Еволюція', 'Анатомія']
         };
 
+        // --- РЕАЛЬНА БАЗА ПИТАНЬ ---
         const REAL_QUESTIONS = {
             ukr: [
                 { topic: 'Орфоепія (Наголос)', text: 'Наголос падає на ДРУГИЙ склад у слові:', options: ['загадка', 'випадок', 'одиннадцять', 'дочка'], correctIndex: 0, explanation: 'Правильно: зАгадка. ВИпадок, одинАдцять, дочкА.' },
@@ -205,9 +200,11 @@
             ]
         };
 
+        // --- АЛГОРИТМІЧНИЙ ГЕНЕРАТОР МАТЕМАТИКИ ---
         function generateMathQuestions(topicFilter = null, count = 10) {
             const pool = [];
             const topics = topicFilter ? [topicFilter] : SUBJECTS_TOPICS.math;
+            
             for (let i = 0; i < count; i++) {
                 const topic = topics[Math.floor(Math.random() * topics.length)];
                 let text = '', opts = [], correct = 0, expl = '';
@@ -216,31 +213,33 @@
                     const x = Math.floor(Math.random() * 10) + 1;
                     const a = Math.floor(Math.random() * 5) + 2;
                     const b = Math.floor(Math.random() * 20) - 10;
-                    text = `Розв'яжіть рівняння: ${a}x ${b >= 0 ? '+ '+b : '- '+Math.abs(b)} = ${a * x + b}`;
+                    const c = a * x + b;
+                    text = `Розв'яжіть рівняння: ${a}x ${b >= 0 ? '+ '+b : '- '+Math.abs(b)} = ${c}`;
                     correct = x;
                     opts = [x, x+1, x-1, x+2].sort(() => Math.random() - 0.5);
-                    expl = `${a}x = ${a*x+b} - (${b}) => ${a}x = ${a*x}. Тоді x = ${x}.`;
+                    expl = `Переносимо число: ${a}x = ${c} - (${b}) => ${a}x = ${c-b}. Тоді x = ${c-b} : ${a} = ${x}.`;
                 } else if (topic.includes('Квадратні')) {
                     const root1 = Math.floor(Math.random() * 5) + 1;
                     const root2 = Math.floor(Math.random() * 5) + 1;
-                    text = `Знайдіть суму коренів: x² - ${root1 + root2}x + ${root1 * root2} = 0`;
+                    text = `Знайдіть суму коренів рівняння: x² - ${root1 + root2}x + ${root1 * root2} = 0`;
                     correct = root1 + root2;
                     opts = [correct, root1 * root2, -correct, root1 - root2].sort(() => Math.random() - 0.5);
-                    expl = `За теоремою Вієта сума = -b. Тут b = -${root1 + root2}, тому сума = ${correct}.`;
+                    expl = `За теоремою Вієта сума коренів x₁ + x₂ = -b. Тут b = -${root1 + root2}, тому сума = ${correct}.`;
                 } else if (topic.includes('Площа') || topic.includes('Планіметрія')) {
                     const a = Math.floor(Math.random() * 10) + 2;
                     const b = Math.floor(Math.random() * 10) + 2;
-                    text = `Площа прямокутника зі сторонами ${a} см та ${b} см:`;
+                    text = `Знайдіть площу прямокутника зі сторонами ${a} см та ${b} см.`;
                     correct = a * b;
                     opts = [correct, a+b, (a*b)/2, a*b+2].sort(() => Math.random() - 0.5);
                     expl = `Площа = a • b = ${a} • ${b} = ${correct} см².`;
                 } else if (topic.includes('Похідна')) {
                     const a = Math.floor(Math.random() * 5) + 1;
-                    const n = Math.floor(Math.random() * 3) + 2;
+                    const n = Math.floor(Math.random() * 3) + 2; // 2, 3, 4
                     const powerStr = n === 2 ? '²' : n === 3 ? '³' : '⁴';
                     const nextPowerStr = (n-1) === 1 ? '' : (n-1) === 2 ? '²' : '³';
                     const correctStr = `${a*n}x${nextPowerStr}`;
-                    text = `Похідна функції f(x) = ${a}x${powerStr}`;
+                    
+                    text = `Знайдіть похідну функції f(x) = ${a}x${powerStr}`;
                     correct = correctStr;
                     opts = [correctStr, `${a}x${nextPowerStr}`, `${a*n}x${powerStr}`, `${n}x${a}`].sort(() => Math.random() - 0.5);
                     expl = `За формулою (xⁿ)' = n • xⁿ⁻¹. Отже, (${a}x${powerStr})' = ${a} • ${n}x${nextPowerStr} = ${correctStr}.`;
@@ -250,7 +249,7 @@
                     text = `Знайдіть ${percent}% від числа ${total}.`;
                     correct = (total * percent) / 100;
                     opts = [correct, correct + 10, correct - 5, total / 2].sort(() => Math.random() - 0.5);
-                    expl = `(${total} • ${percent}) : 100 = ${correct}.`;
+                    expl = `Щоб знайти відсоток, треба число помножити на відсоток і поділити на 100: (${total} • ${percent}) : 100 = ${correct}.`;
                 } else if (topic.includes('Тригонометрія')) {
                     text = `Чому дорівнює sin(30°) + cos(60°)?`;
                     correct = 1;
@@ -263,27 +262,31 @@
                     text = `Обчисліть: ${a}${powerStr}`;
                     correct = Math.pow(a, n);
                     opts = [correct, a*n, correct+5, correct-2].sort(() => Math.random() - 0.5);
-                    expl = `${a}${powerStr} = ${Array(n).fill(a).join(' • ')} = ${correct}.`;
+                    expl = `${a}${powerStr} = ${Array(n).fill(a).join(' • ')} = ${correct}. (Степінь — це число, яке показує, скільки разів треба помножити основу саму на себе).`;
                 } else {
                     const a = Math.floor(Math.random() * 20) + 1;
                     const b = Math.floor(Math.random() * 20) + 1;
                     text = `[${topic}] Обчисліть: ${a} + ${b} • 2`;
                     correct = a + b*2;
                     opts = [correct, (a+b)*2, a+b, correct+5].sort(() => Math.random() - 0.5);
-                    expl = `Спочатку множення: ${b} • 2 = ${b*2}, потім додавання: ${a} + ${b*2} = ${correct}.`;
+                    expl = `Спочатку виконуємо множення: ${b} • 2 = ${b*2}, потім додавання: ${a} + ${b*2} = ${correct}.`;
                 }
+                
                 pool.push({ id: `m_${i}`, topic, text, options: opts.map(String), correctIndex: opts.indexOf(correct), explanation: expl });
             }
             return pool;
         }
 
+        // --- ОТРИМАННЯ ПИТАНЬ ---
         function getQuestionsForMatch(subject, topic) {
             let pool = [];
+            
             if (subject === 'math') {
                 pool = generateMathQuestions(topic, 10);
             } else {
                 const allSubjectQuestions = REAL_QUESTIONS[subject] || [];
                 let filtered = topic ? allSubjectQuestions.filter(q => q.topic === topic) : allSubjectQuestions;
+                
                 if (filtered.length < 5) {
                     const fallback = allSubjectQuestions.filter(q => !filtered.includes(q));
                     filtered = [...filtered, ...fallback];
@@ -291,6 +294,7 @@
                 if (filtered.length === 0) {
                     filtered = [{ topic: 'Загальне', text: 'Питання відсутнє', options: ['А', 'Б', 'В', 'Г'], correctIndex: 0, explanation: 'Немає питань' }];
                 }
+
                 pool = [...filtered].sort(() => Math.random() - 0.5).slice(0, 10).map((q, i) => ({ ...q, id: `${subject}_${i}` }));
             }
 
@@ -300,11 +304,9 @@
                     const j = Math.floor(Math.random() * (i + 1));
                     [indices[i], indices[j]] = [indices[j], indices[i]];
                 }
-                return { ...q, options: indices.map(i => q.options[i] || '---'), correctIndex: indices.indexOf(q.correctIndex) };
+                return { ...q, options: indices.map(i => q.options[i]), correctIndex: indices.indexOf(q.correctIndex) };
             });
         }
 
-        const STORE_FRAMES = [
-            { id: 'f0', name: 'Стандартна', price: 0, style: 'border-2 border-slate-700', icon: '⚪' },
-            { id: 'f1', name: 'Неонова', price: 150, style: 'border-2 border-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.8)]', icon: '✨' },
-            { id: 'f2', name: 'Золотий', price: 300, style: 'border-2 bord
+        // --- МАГАЗИН ТА ЮЗЕР ---
+        const STOR
